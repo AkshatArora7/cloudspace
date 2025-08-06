@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { File, ImageIcon, Download, Share, Trash2, MoreHorizontal, Calendar, HardDrive } from "lucide-react"
 import Image from "next/image"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DeleteConfirmationModal } from "./DeleteConfirmationModal"
 
 interface FileItem {
   key: string
@@ -26,6 +27,11 @@ interface FileGridProps {
 export function FileGrid({ viewMode, searchQuery, fileType }: FileGridProps) {
   const [files, setFiles] = useState<FileItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; file: FileItem | null }>({
+    isOpen: false,
+    file: null
+  })
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     const fetchFiles = async () => {
@@ -116,12 +122,17 @@ export function FileGrid({ viewMode, searchQuery, fileType }: FileGridProps) {
     }
   }
 
-  const handleDelete = async (file: FileItem) => {
-    if (!confirm(`Are you sure you want to delete ${file.name}?`)) return
+  const handleDeleteClick = (file: FileItem) => {
+    setDeleteModal({ isOpen: true, file })
+  }
 
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.file) return
+    
+    setIsDeleting(true)
     try {
       const token = localStorage.getItem("token")
-      const response = await fetch(`/api/s3/delete?key=${encodeURIComponent(file.key)}`, {
+      const response = await fetch(`/api/s3/delete?key=${encodeURIComponent(deleteModal.file.key)}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -129,11 +140,24 @@ export function FileGrid({ viewMode, searchQuery, fileType }: FileGridProps) {
       })
 
       if (response.ok) {
-        setFiles((prev) => prev.filter((f) => f.key !== file.key))
+        setFiles(files.filter(f => f.key !== deleteModal.file?.key))
+        setDeleteModal({ isOpen: false, file: null })
+      } else {
+        console.error("Failed to delete file")
       }
     } catch (error) {
       console.error("Error deleting file:", error)
+    } finally {
+      setIsDeleting(false)
     }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteModal({ isOpen: false, file: null })
+  }
+
+  const handleDelete = async (file: FileItem) => {
+    handleDeleteClick(file)
   }
 
   if (loading) {
@@ -227,51 +251,64 @@ export function FileGrid({ viewMode, searchQuery, fileType }: FileGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-      {files.map((file) => (
-        <Card key={file.key} className="group hover:shadow-lg transition-all duration-200">
-          <CardContent className="p-4">
-            <div className="aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden relative">
-              {isImage(file.type) && file.url ? (
-                <Image
-                  src={file.url || "/placeholder.svg"}
-                  alt={file.name}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform duration-200"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <File className="h-12 w-12 text-gray-400" />
-                </div>
-              )}
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {files.map((file) => (
+          <Card key={file.key} className="group hover:shadow-lg transition-all duration-200">
+            <CardContent className="p-4">
+              <div className="aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden relative">
+                {isImage(file.type) && file.url ? (
+                  <Image
+                    src={file.url || "/placeholder.svg"}
+                    alt={file.name}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-200"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <File className="h-12 w-12 text-gray-400" />
+                  </div>
+                )}
 
-              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
-                <div className="flex space-x-2">
-                  <Button size="sm" variant="secondary" onClick={() => handleDownload(file)}>
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => handleShare(file)}>
-                    <Share className="h-4 w-4" />
-                  </Button>
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <div className="flex space-x-2">
+                    <Button size="sm" variant="secondary" onClick={() => handleDownload(file)}>
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => handleShare(file)}>
+                      <Share className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleDeleteClick(file)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <h3 className="font-medium text-sm text-gray-900 truncate">{file.name}</h3>
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>{formatFileSize(file.size)}</span>
-                <span>{formatDate(file.lastModified)}</span>
+              <div className="space-y-2">
+                <h3 className="font-medium text-sm text-gray-900 truncate">{file.name}</h3>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>{formatFileSize(file.size)}</span>
+                  <span>{formatDate(file.lastModified)}</span>
+                </div>
+                {isImage(file.type) && (
+                  <Badge variant="secondary" className="text-xs">
+                    Image
+                  </Badge>
+                )}
               </div>
-              {isImage(file.type) && (
-                <Badge variant="secondary" className="text-xs">
-                  Image
-                </Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <DeleteConfirmationModal
+        isOpen={deleteModal.isOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        fileName={deleteModal.file?.name || ""}
+        isDeleting={isDeleting}
+      />
+    </>
   )
 }

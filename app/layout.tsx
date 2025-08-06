@@ -10,13 +10,18 @@ export const metadata: Metadata = {
   description:
     "Transform your AWS S3 bucket into a beautiful, intuitive file management system. Upload, organize, and share your files with an Apple-inspired interface.",
   keywords: "AWS S3, file management, cloud storage, file upload, Next.js",
-  authors: [{ name: "CloudSpace Team" }],
+  authors: [{ name: "Akshat Arora" }],
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
+  },
   openGraph: {
     title: "CloudSpace - S3 File Management Made Simple",
     description: "Beautiful file management for your AWS S3 bucket",
     type: "website",
-  },
-    generator: 'v0.dev'
+    images: ["/logo.png"],
+  }
 }
 
 export default function RootLayout({

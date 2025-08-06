@@ -13,7 +13,7 @@ const decrypt = (text: string) => {
   const textParts = text.split(":")
   const iv = Buffer.from(textParts.shift()!, "hex")
   const encryptedText = textParts.join(":")
-  const decipher = crypto.createDecipher(algorithm, key)
+  const decipher = crypto.createDecipheriv(algorithm, key, iv)
   let decrypted = decipher.update(encryptedText, "hex", "utf8")
   decrypted += decipher.final("utf8")
   return decrypted

@@ -10,6 +10,8 @@ import { S3ConfigForm } from "@/components/S3ConfigForm"
 import { FileUpload } from "@/components/FileUpload"
 import { FileGrid } from "@/components/FileGrid"
 import { Input } from "@/components/ui/input"
+import { Spinner } from "@/components/Spinner"
+import Image from "next/image"
 
 interface User {
   id: string
@@ -23,6 +25,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [searchQuery, setSearchQuery] = useState("")
+  const [showSettings, setShowSettings] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -67,10 +70,17 @@ export default function DashboardPage() {
     setUser((prev) => (prev ? { ...prev, hasS3Config: true } : null))
   }
 
+  const handleSettings = () => {
+    setShowSettings(!showSettings)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <Spinner size="lg" className="text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600 mt-4">Loading dashboard...</p>
+        </div>
       </div>
     )
   }
@@ -87,7 +97,13 @@ export default function DashboardPage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
-                <Cloud className="h-8 w-8 text-blue-600" />
+                <Image
+                  src="/logo.png"
+                  alt="CloudSpace Logo"
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 object-contain"
+                />
                 <span className="text-xl font-semibold text-gray-900">CloudSpace</span>
               </div>
               {user.hasS3Config && (
@@ -99,7 +115,7 @@ export default function DashboardPage() {
 
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-600">Welcome, {user.name}</span>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={handleSettings}>
                 <Settings className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
@@ -109,6 +125,33 @@ export default function DashboardPage() {
           </div>
         </div>
       </header>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Settings className="h-5 w-5 text-yellow-600" />
+                <span className="text-sm font-medium text-yellow-800">Settings</span>
+              </div>
+              <div className="flex items-center space-x-4 text-sm text-yellow-700">
+                <span>User: {user.email}</span>
+                <span>•</span>
+                <span>S3 Status: {user.hasS3Config ? 'Connected' : 'Not Connected'}</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setShowSettings(false)}
+                  className="text-yellow-600 hover:text-yellow-800"
+                >
+                  ×
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!user.hasS3Config ? (
