@@ -12,7 +12,7 @@
   ![AWS S3](https://img.shields.io/badge/AWS-S3-orange?style=flat-square&logo=amazon-aws)
   ![Tailwind](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=flat-square&logo=tailwind-css)
   
-  [Live Demo](https://cloudspace-demo.vercel.app) • [Documentation](docs/) • [API Reference](docs/api.md)
+  [Live Demo](https://cloudspace.aatechax.com/)
 </div>
 
 ---
