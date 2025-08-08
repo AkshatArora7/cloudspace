@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
         include: {
-          s3Config: true,
+          s3Configs: true,
         },
       })
 
@@ -32,7 +32,10 @@ export async function GET(request: NextRequest) {
         id: user.id,
         name: user.name,
         email: user.email,
-        hasS3Config: !!user.s3Config,
+        createdAt: user.createdAt,
+        bucketLimit: user.bucketLimit,
+        hasS3Config: user.s3Configs.length > 0,
+        bucketCount: user.s3Configs.length,
       })
     } catch (jwtError) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 })

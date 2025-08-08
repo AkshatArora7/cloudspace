@@ -29,13 +29,15 @@ export async function POST(request: NextRequest) {
     const token = authHeader.substring(7)
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any
 
-    const formData = await request.formData()
-    const file = formData.get("file") as File
-    const bucketId = formData.get("bucketId") as string
-    const currentPath = formData.get("currentPath") as string || ""
+    const { folderName, parentPath, bucketId } = await request.json()
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 })
+    if (!folderName) {
+      return NextResponse.json({ error: "Folder name is required" }, { status: 400 })
+    }
+
+    // Validate folder name
+    if (!/^[a-zA-Z0-9_\-\s]+$/.test(folderName)) {
+      return NextResponse.json({ error: "Invalid folder name. Use only letters, numbers, spaces, hyphens, and underscores." }, { status: 400 })
     }
 
     // Get user's S3 configuration
@@ -74,41 +76,25 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Convert file to buffer
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
+    // Construct folder path
+    const folderPath = parentPath ? `${parentPath}/${folderName}/` : `${folderName}/`
 
-    // Generate unique key with path support
-    const fileExtension = file.name.split(".").pop()
-    const uniqueKey = `${Date.now()}-${crypto.randomUUID()}.${fileExtension}`
+    // Create empty object to represent folder in S3
+    const command = new PutObjectCommand({
+      Bucket: s3Config.bucketName,
+      Key: folderPath,
+      Body: "",
+      ContentType: "application/x-directory",
+    })
 
-    // Determine folder based on file type and current path
-    const folder = file.type.startsWith("image/") ? "images" : "files"
-    const key = currentPath 
-      ? `${currentPath}/${uniqueKey}` 
-      : `${folder}/${uniqueKey}`
+    await s3Client.send(command)
 
-    // Upload to S3
-    await s3Client.send(
-      new PutObjectCommand({
-        Bucket: s3Config.bucketName,
-        Key: key,
-        Body: buffer,
-        ContentType: file.type,
-        Metadata: {
-          originalName: file.name,
-          uploadedBy: decoded.userId,
-        },
-      }),
-    )
-
-    return NextResponse.json({
-      message: "File uploaded successfully",
-      key,
-      originalName: file.name,
+    return NextResponse.json({ 
+      message: "Folder created successfully",
+      folderPath 
     })
   } catch (error) {
-    console.error("Upload error:", error)
-    return NextResponse.json({ error: "Upload failed" }, { status: 500 })
+    console.error("Folder creation error:", error)
+    return NextResponse.json({ error: "Failed to create folder" }, { status: 500 })
   }
 }
