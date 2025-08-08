@@ -16,25 +16,29 @@ model User {
   email         String    @unique
   password      String
   emailVerified Boolean   @default(false)
+  bucketLimit   Int       @default(5) // -1 for unlimited, 5 by default
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   
-  s3Config      S3Config?
+  s3Configs     S3Config[]
   
   @@map("users")
 }
 
 model S3Config {
-  id              String @id @default(cuid())
-  userId          String @unique
-  accessKeyId     String
-  secretAccessKey String // This will be encrypted
-  region          String
-  bucketName      String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                String   @id @default(cuid())
+  userId            String
+  name              String   // Display name for the bucket
+  accessKeyId       String
+  secretAccessKey   String   // encrypted
+  region            String
+  bucketName        String
+  isDefault         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
   
-  user            User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
+  @@unique([userId, bucketName])
   @@map("s3_configs")
 }

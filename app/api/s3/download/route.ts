@@ -31,15 +31,31 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const key = searchParams.get("key")
+    const bucketId = searchParams.get("bucketId")
 
     if (!key) {
       return NextResponse.json({ error: "File key is required" }, { status: 400 })
     }
 
     // Get user's S3 configuration
-    const s3Config = await prisma.s3Config.findUnique({
-      where: { userId: decoded.userId },
-    })
+    let s3Config
+    if (bucketId) {
+      s3Config = await prisma.s3Config.findFirst({
+        where: {
+          id: bucketId,
+          userId: decoded.userId,
+        },
+      })
+    } else {
+      // Fallback to default bucket
+      s3Config = await prisma.s3Config.findFirst({
+        where: { userId: decoded.userId },
+        orderBy: [
+          { isDefault: "desc" },
+          { createdAt: "asc" },
+        ],
+      })
+    }
 
     if (!s3Config) {
       return NextResponse.json({ error: "S3 configuration not found" }, { status: 400 })

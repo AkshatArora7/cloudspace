@@ -37,14 +37,18 @@ export function DeleteConfirmationModal({
             <AlertTriangle className="h-5 w-5" />
             Delete File
           </AlertDialogTitle>
-          <AlertDialogDescription className="space-y-2">
-            <p>
-              Are you sure you want to delete <span className="font-semibold">{fileName}</span>?
-            </p>
-            <p className="text-sm text-red-600 font-medium flex items-center gap-2">
-              <MdWarning className="h-4 w-4 flex-shrink-0" />
-              This action cannot be undone. The file will be permanently removed from your S3 bucket.
-            </p>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <div>
+                Are you sure you want to delete{" "}
+                <span className="font-semibold">{fileName}</span>?
+              </div>
+              <div className="text-sm text-red-600 font-medium flex items-center gap-2">
+                <MdWarning className="h-4 w-4 flex-shrink-0" />
+                This action cannot be undone. The file will be permanently removed
+                from your S3 bucket.
+              </div>
+            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

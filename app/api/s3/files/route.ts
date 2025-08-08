@@ -1,8 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import jwt from "jsonwebtoken"
 import { PrismaClient } from "@prisma/client"
-import { S3Client, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3"
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
+import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3"
 import crypto from "crypto"
 
 const prisma = new PrismaClient()
@@ -32,12 +31,29 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const fileType = searchParams.get("type") || "all"
-    const search = searchParams.get("search") || ""
+    const searchQuery = searchParams.get("search") || ""
+    const currentPath = searchParams.get("path") || ""
+    const bucketId = searchParams.get("bucketId")
 
     // Get user's S3 configuration
-    const s3Config = await prisma.s3Config.findUnique({
-      where: { userId: decoded.userId },
-    })
+    let s3Config;
+    if (bucketId) {
+      s3Config = await prisma.s3Config.findFirst({
+        where: { 
+          id: bucketId,
+          userId: decoded.userId 
+        },
+      })
+    } else {
+      // Fallback to default bucket or first available
+      s3Config = await prisma.s3Config.findFirst({
+        where: { userId: decoded.userId },
+        orderBy: [
+          { isDefault: 'desc' },
+          { createdAt: 'asc' }
+        ]
+      })
+    }
 
     if (!s3Config) {
       return NextResponse.json({ error: "S3 configuration not found" }, { status: 400 })
@@ -55,72 +71,102 @@ export async function GET(request: NextRequest) {
       },
     })
 
-    // List objects
-    const listCommand = new ListObjectsV2Command({
+    // List objects with optional prefix
+    const prefix = currentPath ? `${currentPath}/` : ""
+    const command = new ListObjectsV2Command({
       Bucket: s3Config.bucketName,
-      MaxKeys: 1000,
+      Prefix: prefix,
+      Delimiter: "/", // This helps separate folders from files
     })
 
-    const response = await s3Client.send(listCommand)
-    const objects = response.Contents || []
+    const response = await s3Client.send(command)
+    
+    const files = []
+    
+    // Add folders (CommonPrefixes)
+    if (response.CommonPrefixes) {
+      for (const folder of response.CommonPrefixes) {
+        if (folder.Prefix) {
+          const folderName = folder.Prefix.replace(prefix, "").replace("/", "")
+          if (folderName) {
+            files.push({
+              key: folder.Prefix,
+              name: folderName,
+              size: 0,
+              lastModified: new Date().toISOString(),
+              type: "folder",
+              isFolder: true,
+            })
+          }
+        }
+      }
+    }
 
-    // Filter and format files
-    const files = await Promise.all(
-      objects
-        .filter((obj) => {
-          if (!obj.Key) return false
-
-          const fileName = obj.Key.split("/").pop() || ""
+    // Add files
+    if (response.Contents) {
+      for (const object of response.Contents) {
+        if (object.Key && object.Key !== prefix && !object.Key.endsWith("/")) {
+          const fileName = object.Key.replace(prefix, "")
+          const fileExtension = fileName.split(".").pop()?.toLowerCase() || ""
+          const mimeType = getMimeType(fileExtension)
+          
+          // Filter by file type if specified
+          if (fileType !== "all") {
+            if (fileType === "images" && !mimeType.startsWith("image/")) continue
+            if (fileType === "documents" && mimeType.startsWith("image/")) continue
+          }
 
           // Filter by search query
-          if (search && !fileName.toLowerCase().includes(search.toLowerCase())) {
-            return false
+          if (searchQuery && !fileName.toLowerCase().includes(searchQuery.toLowerCase())) {
+            continue
           }
 
-          // Filter by file type
-          if (fileType === "images") {
-            return obj.Key.startsWith("images/")
-          } else if (fileType === "documents") {
-            return obj.Key.startsWith("files/")
-          }
-
-          return true
-        })
-        .map(async (obj) => {
-          const fileName = obj.Key!.split("/").pop() || obj.Key!
-          const isImage = obj.Key!.startsWith("images/")
-
-          let url = undefined
-          if (isImage) {
-            // Generate presigned URL for images
-            try {
-              url = await getSignedUrl(
-                s3Client,
-                new GetObjectCommand({
-                  Bucket: s3Config.bucketName,
-                  Key: obj.Key!,
-                }),
-                { expiresIn: 3600 }, // 1 hour
-              )
-            } catch (error) {
-              console.error("Error generating presigned URL:", error)
-            }
-          }
-
-          return {
-            key: obj.Key!,
+          files.push({
+            key: object.Key,
             name: fileName,
-            size: obj.Size || 0,
-            lastModified: obj.LastModified?.toISOString() || "",
-            type: isImage ? "image/jpeg" : "application/octet-stream",
-            url,
-          }
-        }),
-    )
+            size: object.Size || 0,
+            lastModified: object.LastModified?.toISOString() || new Date().toISOString(),
+            type: mimeType,
+            isFolder: false,
+          })
+        }
+      }
+    }
 
     return NextResponse.json({ files })
   } catch (error) {
     console.error("List files error:", error)
     return NextResponse.json({ error: "Failed to list files" }, { status: 500 })
   }
+}
+
+function getMimeType(extension: string): string {
+  const mimeTypes: { [key: string]: string } = {
+    // Images
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    
+    // Documents
+    pdf: "application/pdf",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    txt: "text/plain",
+    
+    // Archives
+    zip: "application/zip",
+    rar: "application/x-rar-compressed",
+    
+    // Default
+    default: "application/octet-stream",
+  }
+  
+  return mimeTypes[extension] || mimeTypes.default
 }

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Cloud, ImageIcon, File, FolderPlus, Settings, LogOut, Grid, List, Search, Filter } from "lucide-react"
+import { Cloud, ImageIcon, File, FolderPlus, Settings, LogOut, Grid, List, Search, Filter, ChevronRight, Home, Database } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { S3ConfigForm } from "@/components/S3ConfigForm"
 import { FileUpload } from "@/components/FileUpload"
@@ -12,6 +12,9 @@ import { FileGrid } from "@/components/FileGrid"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/Spinner"
 import Image from "next/image"
+import { CreateFolderModal } from "@/components/CreateFolderModal"
+import { BucketDrawer } from "@/components/BucketDrawer"
+import Link from "next/link"
 
 interface User {
   id: string
@@ -20,12 +23,25 @@ interface User {
   hasS3Config: boolean
 }
 
+interface S3Bucket {
+  id: string
+  name: string
+  bucketName: string
+  region: string
+  isDefault: boolean
+  createdAt: string
+}
+
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [searchQuery, setSearchQuery] = useState("")
   const [showSettings, setShowSettings] = useState(false)
+  const [showCreateFolder, setShowCreateFolder] = useState(false)
+  const [currentPath, setCurrentPath] = useState("")
+  const [currentBucket, setCurrentBucket] = useState<S3Bucket | null>(null)
+  const [buckets, setBuckets] = useState<S3Bucket[]>([])
   const router = useRouter()
 
   useEffect(() => {
@@ -37,6 +53,7 @@ export default function DashboardPage() {
           return
         }
 
+        // Fetch user profile
         const response = await fetch("/api/user/profile", {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -46,6 +63,20 @@ export default function DashboardPage() {
         if (response.ok) {
           const userData = await response.json()
           setUser(userData)
+          
+          // Fetch buckets if user has S3 config
+          if (userData.hasS3Config) {
+            const bucketsResponse = await fetch("/api/s3/buckets", {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            
+            if (bucketsResponse.ok) {
+              const bucketsData = await bucketsResponse.json()
+              setBuckets(bucketsData.buckets)
+              const defaultBucket = bucketsData.buckets.find((b: S3Bucket) => b.isDefault)
+              setCurrentBucket(defaultBucket || bucketsData.buckets[0] || null)
+            }
+          }
         } else {
           localStorage.removeItem("token")
           router.push("/auth/signin")
@@ -71,7 +102,61 @@ export default function DashboardPage() {
   }
 
   const handleSettings = () => {
-    setShowSettings(!showSettings)
+    router.push("/settings")
+  }
+
+  const handleCreateFolder = () => {
+    setShowCreateFolder(true)
+  }
+
+  const handleFolderCreated = () => {
+    // Refresh the file grid
+    window.location.reload()
+  }
+
+  const handleFolderClick = (folderPath: string) => {
+    setCurrentPath(folderPath)
+  }
+
+  const handleNavigateUp = () => {
+    const pathParts = currentPath.split('/').filter(Boolean)
+    pathParts.pop()
+    setCurrentPath(pathParts.join('/'))
+  }
+
+  const getBreadcrumbs = () => {
+    if (!currentPath) return []
+    return currentPath.split('/').filter(Boolean)
+  }
+
+  const handleResetS3Config = async () => {
+    if (!confirm("Are you sure you want to reset your S3 configuration? You'll need to re-enter your credentials.")) {
+      return
+    }
+
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/s3/config", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setUser((prev) => (prev ? { ...prev, hasS3Config: false } : null))
+      }
+    } catch (error) {
+      console.error("Error resetting S3 config:", error)
+    }
+  }
+
+  const handleBucketChange = (bucket: S3Bucket | null) => {
+    setCurrentBucket(bucket)
+    // Reset current path when switching buckets
+    if (bucket) {
+      setCurrentPath("")
+    }
   }
 
   if (loading) {
@@ -106,10 +191,15 @@ export default function DashboardPage() {
                 />
                 <span className="text-xl font-semibold text-gray-900">CloudSpace</span>
               </div>
-              {user.hasS3Config && (
-                <Badge variant="secondary" className="bg-green-100 text-green-800">
-                  S3 Connected
-                </Badge>
+              {currentBucket && (
+                <BucketDrawer
+                  currentBucket={currentBucket}
+                  onBucketChange={handleBucketChange}
+                >
+                  <Badge variant="secondary" className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200">
+                    {currentBucket.name}
+                  </Badge>
+                </BucketDrawer>
               )}
             </div>
 
@@ -126,35 +216,8 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Settings className="h-5 w-5 text-yellow-600" />
-                <span className="text-sm font-medium text-yellow-800">Settings</span>
-              </div>
-              <div className="flex items-center space-x-4 text-sm text-yellow-700">
-                <span>User: {user.email}</span>
-                <span>•</span>
-                <span>S3 Status: {user.hasS3Config ? 'Connected' : 'Not Connected'}</span>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setShowSettings(false)}
-                  className="text-yellow-600 hover:text-yellow-800"
-                >
-                  ×
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {!user.hasS3Config ? (
+        {buckets.length === 0 ? (
           <div className="max-w-2xl mx-auto">
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-4">Connect Your AWS S3 Bucket</h1>
@@ -163,7 +226,15 @@ export default function DashboardPage() {
                 the process.
               </p>
             </div>
-            <S3ConfigForm onComplete={handleS3ConfigComplete} />
+            <BucketDrawer
+              currentBucket={currentBucket}
+              onBucketChange={handleBucketChange}
+            >
+              <Button className="w-full">
+                <Database className="h-4 w-4 mr-2" />
+                Add Your First S3 Bucket
+              </Button>
+            </BucketDrawer>
           </div>
         ) : (
           <div className="space-y-6">
@@ -172,12 +243,43 @@ export default function DashboardPage() {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Your Files</h1>
                 <p className="text-gray-600">Manage and organize your S3 files</p>
+                
+                {/* Breadcrumb Navigation */}
+                {currentPath && (
+                  <div className="flex items-center space-x-2 mt-2 text-sm text-gray-500">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCurrentPath("")}
+                      className="p-0 h-auto font-normal"
+                    >
+                      <Home className="h-4 w-4 mr-1" />
+                      Home
+                    </Button>
+                    {getBreadcrumbs().map((folder, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <ChevronRight className="h-4 w-4" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const pathToFolder = getBreadcrumbs().slice(0, index + 1).join('/')
+                            setCurrentPath(pathToFolder)
+                          }}
+                          className="p-0 h-auto font-normal"
+                        >
+                          {folder}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex items-center space-x-2">
                 <Button variant="outline" size="sm" onClick={() => setViewMode(viewMode === "grid" ? "list" : "grid")}>
                   {viewMode === "grid" ? <List className="h-4 w-4" /> : <Grid className="h-4 w-4" />}
                 </Button>
-                <Button>
+                <Button onClick={handleCreateFolder}>
                   <FolderPlus className="h-4 w-4 mr-2" />
                   New Folder
                 </Button>
@@ -222,20 +324,49 @@ export default function DashboardPage() {
               </TabsList>
 
               <TabsContent value="all" className="space-y-4">
-                <FileGrid viewMode={viewMode} searchQuery={searchQuery} fileType="all" />
+                <FileGrid 
+                  viewMode={viewMode} 
+                  searchQuery={searchQuery} 
+                  fileType="all" 
+                  currentPath={currentPath}
+                  onFolderClick={handleFolderClick}
+                  onRefresh={handleFolderCreated}
+                />
               </TabsContent>
 
               <TabsContent value="images" className="space-y-4">
-                <FileGrid viewMode={viewMode} searchQuery={searchQuery} fileType="images" />
+                <FileGrid 
+                  viewMode={viewMode} 
+                  searchQuery={searchQuery} 
+                  fileType="images" 
+                  currentPath={currentPath}
+                  onFolderClick={handleFolderClick}
+                  onRefresh={handleFolderCreated}
+                />
               </TabsContent>
 
               <TabsContent value="documents" className="space-y-4">
-                <FileGrid viewMode={viewMode} searchQuery={searchQuery} fileType="documents" />
+                <FileGrid 
+                  viewMode={viewMode} 
+                  searchQuery={searchQuery} 
+                  fileType="documents" 
+                  currentPath={currentPath}
+                  onFolderClick={handleFolderClick}
+                  onRefresh={handleFolderCreated}
+                />
               </TabsContent>
             </Tabs>
           </div>
         )}
       </div>
+
+      {/* Create Folder Modal */}
+      <CreateFolderModal
+        isOpen={showCreateFolder}
+        onClose={() => setShowCreateFolder(false)}
+        onSuccess={handleFolderCreated}
+        currentPath={currentPath}
+      />
     </div>
   )
 }
