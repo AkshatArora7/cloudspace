@@ -18,7 +18,7 @@
     "version:minor": "npm version minor",
     "version:major": "npm version major",
     "postinstall": "npx prisma generate",
-    "vercel-build": "npx prisma db push --force-reset && npx prisma generate && next build"
+    "vercel-build": "npx prisma db push && npx prisma generate && next build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.699.0",
